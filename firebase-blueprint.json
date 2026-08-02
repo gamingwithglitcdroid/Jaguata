@@ -1,0 +1,181 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user profile information for both owners and walkers.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID from Firebase Auth" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "role": { "type": "string", "enum": ["owner", "walker"] },
+        "bio": { "type": "string" },
+        "address": { "type": "string" },
+        "walkCount": { "type": "integer" },
+        "rating": { "type": "number" },
+        "isAvailable": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Pet": {
+      "title": "Pet",
+      "description": "Stores information about a pet owned by a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "breed": { "type": "string" },
+        "age": { "type": "number" },
+        "size": { "type": "string", "enum": ["small", "medium", "large"] },
+        "medications": { "type": "string" },
+        "allergies": { "type": "string" },
+        "accessInstructions": { "type": "string" },
+        "photos": { "type": "array", "items": { "type": "string" } },
+        "behaviorNotes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "name", "photos", "createdAt"]
+    },
+    "Walk": {
+      "title": "Walk",
+      "description": "Stores information about a dog walking session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "walkerId": { "type": "string" },
+        "petIds": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["requested", "accepted", "in_progress", "completed", "cancelled"] },
+        "pickupLocation": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        },
+        "currentLocation": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "startTime": { "type": "string", "format": "date-time" },
+        "endTime": { "type": "string", "format": "date-time" },
+        "durationMinutes": { "type": "integer" },
+        "cost": { "type": "number" },
+        "report": {
+          "type": "object",
+          "properties": {
+            "notes": { "type": "string" },
+            "didBusiness": { "type": "boolean" },
+            "photos": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "petIds", "status", "pickupLocation", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Stores chat messages between owners and walkers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "walkId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["walkId", "senderId", "text", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Stores in-app notifications for users.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "type": { "type": "string" },
+        "walkId": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "body", "type", "read", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Stores payment transaction information.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "walkId": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "method": { "type": "string", "enum": ["card", "transfer", "cash"] },
+        "status": { "type": "string", "enum": ["pending", "completed", "failed"] },
+        "receiptUrl": { "type": "string", "format": "uri" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["walkId", "userId", "amount", "method", "status", "createdAt"]
+    },
+    "UserSession": {
+      "title": "User Session",
+      "description": "Stores information about active login sessions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "device": { "type": "string" },
+        "browser": { "type": "string" },
+        "os": { "type": "string" },
+        "lastSeen": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "device", "browser", "os", "lastSeen"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile registry (contains both roles)"
+    },
+    "/owners/{ownerId}": {
+      "schema": "UserProfile",
+      "description": "Pet owner specific documents"
+    },
+    "/walkers/{walkerId}": {
+      "schema": "UserProfile",
+      "description": "Dog walker specific documents"
+    },
+    "/pets/{petId}": {
+      "schema": "Pet",
+      "description": "Pet documents"
+    },
+    "/walks/{walkId}": {
+      "schema": "Walk",
+      "description": "Walk session documents"
+    },
+    "/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Chat message documents"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "In-app notification documents"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Payment transaction documents"
+    },
+    "/sessions/{sessionId}": {
+      "schema": "UserSession",
+      "description": "Active user sessions registry"
+    }
+  }
+}

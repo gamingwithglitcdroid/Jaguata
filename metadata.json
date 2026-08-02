@@ -1,0 +1,9 @@
+{
+  "name": "Jaguata",
+  "description": "A mobile-optimized on-demand dog walking service connecting pet owners with verified walkers. Features real-time GPS tracking, dark mode, booking system, and multi-modal payments.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

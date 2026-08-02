@@ -1,0 +1,236 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (UID)
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required, email format)
+    //   - displayName: string
+    //   - photoURL: string (uri format)
+    //   - role: string (required, 'owner' or 'walker')
+    //   - bio: string
+    //   - address: string
+    //   - walkCount: integer
+    //   - rating: number
+    //   - isAvailable: boolean
+    //   - createdAt: string (date-time format)
+    //
+    // Collection: owners
+    // Document ID: userId (UID)
+    // Fields: Same as users
+    //
+    // Collection: walkers
+    // Document ID: userId (UID)
+    // Fields: Same as users
+    //
+    // Collection: pets
+    // Document ID: petId
+    // Fields:
+    //   - ownerId: string (required)
+    //   - name: string (required)
+    //   - breed: string
+    //   - age: integer
+    //   - photos: list
+    //   - behaviorNotes: string
+    //   - createdAt: string (date-time format)
+    //
+    // Collection: walks
+    // Document ID: walkId
+    // Fields:
+    //   - ownerId: string (required)
+    //   - walkerId: string
+    //   - petIds: list (required)
+    //   - status: string (required, enum)
+    //   - pickupLocation: map (required)
+    //   - currentLocation: map
+    //   - startTime: string
+    //   - endTime: string
+    //   - durationMinutes: integer
+    //   - cost: number
+    //   - report: map
+    //   - createdAt: string (required)
+    //
+    // Collection: transactions
+    // Document ID: transactionId
+    // Fields:
+    //   - walkId: string (required)
+    //   - userId: string (required)
+    //   - amount: number (required)
+    //   - method: string (required, 'card', 'transfer', 'cash')
+    //   - status: string (required, 'pending', 'completed', 'failed')
+    //   - receiptUrl: string
+    //   - createdAt: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.ownerId;
+    }
+
+    function isWalker(walkId) {
+      return isAuthenticated() && request.auth.uid == resource.data.walkerId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          // Check role in user document
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          // Fallback to hardcoded admin email (less strict verification for development)
+          (request.auth.token.email.toLowerCase() == "gamingwithglitch@gmail.com")
+        );
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             (isAdmin() || (isAuthenticated() && data.uid == request.auth.uid)) &&
+             isValidEmail(data.email) &&
+             data.role in ['owner', 'walker', 'admin'] &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() < 1000)) &&
+             (!('address' in data) || (data.address is string && data.address.size() < 200)) &&
+             (!('lastLogin' in data) || isValidDateString(data.lastLogin)) &&
+             (!('fcmToken' in data) || (data.fcmToken is string && data.fcmToken.size() < 300));
+    }
+
+    function isValidPet(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'photos', 'createdAt']) &&
+             data.ownerId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             isValidDateString(data.createdAt) &&
+             data.photos is list && data.photos.size() <= 10 &&
+             (!('breed' in data) || (data.breed is string && data.breed.size() < 100)) &&
+             (!('age' in data) || (data.age is number && data.age >= 0 && data.age < 100)) &&
+             (!('size' in data) || (data.size in ['small', 'medium', 'large'])) &&
+             (!('medications' in data) || (data.medications is string && data.medications.size() < 1000)) &&
+             (!('allergies' in data) || (data.allergies is string && data.allergies.size() < 1000)) &&
+             (!('accessInstructions' in data) || (data.accessInstructions is string && data.accessInstructions.size() < 1000)) &&
+             (!('behaviorNotes' in data) || (data.behaviorNotes is string && data.behaviorNotes.size() < 2000));
+    }
+
+    function isValidWalk(data) {
+      return data.keys().hasAll(['ownerId', 'petIds', 'status', 'pickupLocation', 'createdAt']) &&
+             data.ownerId == request.auth.uid &&
+             data.petIds is list && data.petIds.size() > 0 &&
+             data.status in ['requested', 'pending_owner', 'accepted', 'walker_arrived', 'in_progress', 'completed', 'cancelled'] &&
+             data.pickupLocation is map &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidSession(data) {
+      return data.keys().hasAll(['userId', 'device', 'browser', 'os', 'lastSeen']) &&
+             data.userId == request.auth.uid &&
+             isValidDateString(data.lastSeen);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
+      allow delete: if isAdmin();
+
+      // Subcolección para datos sensibles (Cédula, Antecedentes, etc.)
+      match /private_data/{document=**} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    match /owners/{ownerId} {
+      allow read: if isAuthenticated();
+      allow create: if (isOwner(ownerId) || isAdmin()) && isValidUser(request.resource.data);
+      allow update: if (isOwner(ownerId) || isAdmin()) && isValidUser(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /walkers/{walkerId} {
+      allow read: if isAuthenticated();
+      allow create: if (isOwner(walkerId) || isAdmin()) && isValidUser(request.resource.data);
+      allow update: if (isOwner(walkerId) || isAdmin()) && isValidUser(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /pets/{petId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidPet(request.resource.data);
+      allow update: if isAuthenticated() && (isAdmin() || (isDocOwner() && isValidPet(request.resource.data)));
+      allow delete: if isDocOwner() || isAdmin();
+    }
+
+    match /walks/{walkId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidWalk(request.resource.data);
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        // Owner can cancel or update notes
+        (isDocOwner() && request.resource.data.status in ['requested', 'cancelled']) ||
+        // Walker can accept, start, update location, or finish
+        (request.auth.uid == request.resource.data.walkerId || isWalker(walkId))
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.senderId || request.auth.uid != resource.data.senderId); // Simplified for now, anyone in chat can update (usually marking as read)
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.userId);
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create: if isAuthenticated() && isValidSession(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidSession(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
